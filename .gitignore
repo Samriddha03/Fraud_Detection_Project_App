@@ -1,0 +1,31 @@
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables (like API keys)
+.env
+
+# Data files (optional: don’t commit large datasets)
+Data/
+*.csv
+*.sqlite
+*.db
+
+# ML models (optional: sometimes you do want to version them)
+models/*.pkl
+models/*.h5
+
+# Logs
+*.log
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
