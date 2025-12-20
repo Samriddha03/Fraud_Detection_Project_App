@@ -10,14 +10,14 @@ async function checkFraud() {
    features[0] = Number(amount);
 
   const response = await fetch(
-    "https://fraud-detection-project-app-7.onrender.com/predict",
+    "https://fraud-detection-project-app-5.onrender.com/predict",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        transaction: [features]
+        transaction: features
       })
     }
   );

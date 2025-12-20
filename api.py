@@ -1,56 +1,68 @@
-# Model and scaler trained in Google Colab using fraud dataset
-# Saved as fraud_model.pkl and scaler.pkl
-
-from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel
-from typing import List
+# api.py
 import joblib
 import numpy as np
 import logging
+from fastapi import FastAPI, Body, HTTPException
+from pydantic import BaseModel
 
+# ----------------- Logging -----------------
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(
-    title="Fraud Detection API",
-    description="API for predicting fraudulent transactions",
-    version="1.0"
-)
-
-# Load model & scaler safely
+# ----------------- Load Model -----------------
 try:
-    model = joblib.load("fraud_model.pkl")
-    scaler = joblib.load("scaler.pkl")
+    model = joblib.load("fraud_model_1feature.pkl")  # 1-feature model
+    logging.info("Model loaded successfully")
 except Exception as e:
-    raise RuntimeError(f"Failed to load model or scaler: {e}")
+    logging.error(f"Failed to load model: {e}")
+    raise
 
-expected_features = scaler.scale_.shape[0]
+# No scaler is used
+scaler = None
 
+# ----------------- Expected Features -----------------
+expected_features = 1  # 1 feature only
+
+# ----------------- FastAPI App -----------------
+app = FastAPI()
+
+# ----------------- Request Schema -----------------
 class TransactionRequest(BaseModel):
-    transaction: List[float]
+    transaction: list  # list of numbers
 
-# Health check
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
+# ----------------- Predict Endpoint -----------------
 @app.post("/predict")
 def predict(request: TransactionRequest = Body(...)):
+    logging.info("Entered /predict endpoint")
     logging.info(f"Received transaction with {len(request.transaction)} features")
 
+    # Validate number of features
     if len(request.transaction) != expected_features:
+        logging.error(
+            f"Invalid number of features. Expected {expected_features}, "
+            f"got {len(request.transaction)}"
+        )
         raise HTTPException(
             status_code=422,
             detail=f"Invalid number of features. Expected {expected_features}, got {len(request.transaction)}"
         )
 
-    try:
-        data = np.array(request.transaction).reshape(1, -1)
-        data_scaled = scaler.transform(data)
-        prediction = model.predict(data_scaled)[0]
+    # Validate numeric input
+    if not all(isinstance(x, (int, float)) for x in request.transaction):
+        logging.error("All features must be numeric")
+        raise HTTPException(
+            status_code=422,
+            detail="All features must be numeric"
+        )
 
-        probability = None
-        if hasattr(model, "predict_proba"):
-            probability = float(model.predict_proba(data_scaled)[0][1])
+    try:
+        # Prepare data
+        data = np.array(request.transaction).reshape(1, -1)
+
+        # No scaler, use data as-is
+        prediction = model.predict(data)[0]
+
+        # Probability if available
+        probability = float(model.predict_proba(data)[0][1]) if hasattr(model, "predict_proba") else None
 
         label = "Fraud" if prediction == 1 else "Not Fraud"
 
@@ -62,7 +74,6 @@ def predict(request: TransactionRequest = Body(...)):
             "fraud_probability": probability
         }
 
-    except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
+        logging.exception("Unhandled error in /predict")
         raise HTTPException(status_code=500, detail=str(e))
