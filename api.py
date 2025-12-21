@@ -1,79 +1,86 @@
-# api.py
 import joblib
 import numpy as np
 import logging
 from fastapi import FastAPI, Body, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
 
-# ----------------- Logging -----------------
+# -------------------------
+# Logging
+# -------------------------
 logging.basicConfig(level=logging.INFO)
 
-# ----------------- Load Model -----------------
+# -------------------------
+# Load 1-feature model
+# -------------------------
 try:
-    model = joblib.load("fraud_model_1feature.pkl")  # 1-feature model
-    logging.info("Model loaded successfully")
+    model = joblib.load("fraud_model_1feature.pkl")
+    logging.info("1-feature model loaded successfully")
 except Exception as e:
-    logging.error(f"Failed to load model: {e}")
+    logging.error(f"Model load failed: {e}")
     raise
 
-# No scaler is used
-scaler = None
+# -------------------------
+# FastAPI app
+# -------------------------
+app = FastAPI(
+    title="Fraud Detection API",
+    description="Fraud prediction using 1 feature (Amount)",
+    version="1.0"
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # allow all frontends
+    allow_credentials=True,
+    allow_methods=["*"],  # allow POST, GET, OPTIONS
+    allow_headers=["*"],  # allow all headers
+)
 
-# ----------------- Expected Features -----------------
-expected_features = 1  # 1 feature only
 
-# ----------------- FastAPI App -----------------
-app = FastAPI()
-
-# ----------------- Request Schema -----------------
+# -------------------------
+# Request schema
+# -------------------------
 class TransactionRequest(BaseModel):
-    transaction: list  # list of numbers
+    transaction: list[float]  # exactly ONE value
 
-# ----------------- Predict Endpoint -----------------
+# -------------------------
+# Health check
+# -------------------------
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+# -------------------------
+# Predict endpoint
+# -------------------------
 @app.post("/predict")
 def predict(request: TransactionRequest = Body(...)):
-    logging.info("Entered /predict endpoint")
-    logging.info(f"Received transaction with {len(request.transaction)} features")
+    logging.info(f"Received input: {request.transaction}")
 
-    # Validate number of features
-    if len(request.transaction) != expected_features:
-        logging.error(
-            f"Invalid number of features. Expected {expected_features}, "
-            f"got {len(request.transaction)}"
-        )
+    if len(request.transaction) != 1:
         raise HTTPException(
             status_code=422,
-            detail=f"Invalid number of features. Expected {expected_features}, got {len(request.transaction)}"
-        )
-
-    # Validate numeric input
-    if not all(isinstance(x, (int, float)) for x in request.transaction):
-        logging.error("All features must be numeric")
-        raise HTTPException(
-            status_code=422,
-            detail="All features must be numeric"
+            detail=f"Invalid number of features. Expected 1, got {len(request.transaction)}"
         )
 
     try:
-        # Prepare data
-        data = np.array(request.transaction).reshape(1, -1)
+        X = np.array(request.transaction).reshape(1, 1)
+        prediction = model.predict(X)[0]
 
-        # No scaler, use data as-is
-        prediction = model.predict(data)[0]
-
-        # Probability if available
-        probability = float(model.predict_proba(data)[0][1]) if hasattr(model, "predict_proba") else None
-
-        label = "Fraud" if prediction == 1 else "Not Fraud"
-
-        logging.info(f"Prediction result: {label}, Probability: {probability}")
+        probability = None
+        if hasattr(model, "predict_proba"):
+            proba = model.predict_proba(X)[0]
+            probability = float(proba[1]) if len(proba) > 1 else 0.0
 
         return {
-            "prediction": label,
-            "fraud_prediction": int(prediction),
-            "fraud_probability": probability
-        }
+    "prediction": "Fraud" if prediction == 1 else "Not Fraud",
+    "fraud_prediction": int(prediction),
+    "fraud_probability": round(probability or 0, 4),
+    "amount": request.transaction[0],
+    "note": "Demo model using only transaction amount"
+}
 
     except Exception as e:
-        logging.exception("Unhandled error in /predict")
+        logging.exception("Prediction failed")
         raise HTTPException(status_code=500, detail=str(e))

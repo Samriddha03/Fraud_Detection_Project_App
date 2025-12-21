@@ -1,29 +1,44 @@
 async function checkFraud() {
-  const amount = document.getElementById("amount").value;
+  const amountInput = document.getElementById("amount");
+  const resultEl = document.getElementById("result");
 
-  if (!amount) {
+  const amount = amountInput.value;
+
+  if (amount === "") {
     alert("Please enter a transaction amount");
     return;
   }
-  const FEATURE_COUNT = 30;
-  const features = new Array(FEATURE_COUNT).fill(0);
-   features[0] = Number(amount);
 
-  const response = await fetch(
-    "https://fraud-detection-project-app-5.onrender.com/predict",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        transaction: features
-      })
+  // Show loading state
+  resultEl.innerText = "Checking fraud status...";
+
+  try {
+    const response = await fetch(
+      "https://fraud-api01.onrender.com/predict",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          transaction: [Number(amount)] // ✅ EXACTLY ONE FEATURE
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(err);
     }
-  );
 
-  const data = await response.json();
+    const data = await response.json();
 
-  document.getElementById("result").innerText =
-    `Prediction: ${data.prediction}`;
+    resultEl.innerText =
+      `Prediction: ${data.prediction}
+Fraud Probability: ${data.fraud_probability}`;
+
+  } catch (error) {
+    console.error("API Error:", error);
+    resultEl.innerText = "Error calling Fraud API";
+  }
 }
